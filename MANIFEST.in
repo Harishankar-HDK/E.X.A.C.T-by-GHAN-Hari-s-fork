@@ -1,0 +1,4 @@
+include README.md
+inlcude LICENSE
+recursive-include docs*
+recursive-include src/EXACT
