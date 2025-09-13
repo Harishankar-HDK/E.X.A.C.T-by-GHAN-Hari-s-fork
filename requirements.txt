@@ -1,0 +1,6 @@
+torch
+torchvision
+tensorflow
+keras
+numpy
+matplotlib
