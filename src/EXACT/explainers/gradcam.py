@@ -27,10 +27,9 @@ class GradCAM:
         ) / 255.0
 
         colormap = plt.get_cmap(cmap)
-        heatmap_color = colormap(heatmap_resized)
-        heatmap_color = (heatmap_color[..., :3] * 255),astype(np.uint8)
+        heatmap_color = colormap(heatmap_resized)[..., :3]
 
-        overlay = (image * (1 - alpha) + heatmap_color & alpha). astype(np.uint8)
+        overlay = (image * (1 - alpha) + heatmap_color * 255 *alpha).astype(np.uint8)
         
         if show:
             fig, ax = plt.subplots(1, 3, figsize=(12, 4))
@@ -39,19 +38,19 @@ class GradCAM:
             ax[0].axis("off")
 
             ax[1].set_title("Heatmap")
-            ax[1].imshow(cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB))
+            ax[1].imshow(heatmap_resized, cmap = cmap)
             ax[1].axis("off")
 
             ax[2].set_title("Overlay")
-            ax[2].imshow(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
+            ax[2].imshow(overlay)
             ax[2].axis("off")
 
             plt.show()
 
         return overlay
     
-    def _torch_gradcam(self):
-        pass
+    def _torch_gradcam(self, input_data, class_index = None):
+        import torch
 
     def _tf_gradcam(self):
         pass
