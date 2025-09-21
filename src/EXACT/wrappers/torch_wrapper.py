@@ -1,13 +1,13 @@
 from base_wrapper import BaseWrapper
 
 class TorchWrapper(BaseWrapper):
-    """Class for wrapping PyTorch models.
-        Supported functionalities :
-        -> .predict -> returns the logit/output returned by the model as a numpy object, moved to the cpu.
-        -> .save -> saves the model's state dictionary to specified path.
-        -> .load -> loads model weights from specified path for wrapped model.
-        -> .get_params -> returns model parameters as a Dict object).
-        -> .set_params -> sets model parameters as per input parameters of type **params
+    """Class for wrapping PyTorch models.\n
+        Supported functionalities :\n
+        -> .predict -> returns the logit/output returned by the model as a numpy object, moved to the cpu.\n
+        -> .save -> saves the model's state dictionary to specified path.\n
+        -> .load -> loads model weights from specified path for wrapped model.\n
+        -> .get_params -> returns model parameters as a Dict object).\n
+        -> .set_params -> sets model parameters as per input parameters of type **params\n
 
         Dependencies = ["torch"]
     """
