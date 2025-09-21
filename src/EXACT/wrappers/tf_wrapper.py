@@ -31,3 +31,18 @@ class TFWrapper(BaseWrapper):
         for layer in self.model.layers:
             if layer.name in params:
                 layer.set_weights(params[layer.name])
+
+    def get_last_conv_layer(self):
+        """
+        Finds the last convolutional layer in a TensorFlow/Keras model.\n
+        Returns the layer object.
+        """
+        last_conv = None
+        for layer in self.model.layers:
+            if isinstance(layer, (tf.keras.layers.Conv2D, tf.keras.layers.Conv3D)):
+                last_conv = layer
+
+        if last_conv is None:
+            raise ValueError("No Conv layer found in the TensorFlow model.")
+
+        return last_conv

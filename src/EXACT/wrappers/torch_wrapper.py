@@ -1,4 +1,4 @@
-from base_wrapper import BaseWrapper
+from .base_wrapper import BaseWrapper
 
 class TorchWrapper(BaseWrapper):
     """Class for wrapping PyTorch models.\n
@@ -33,9 +33,30 @@ class TorchWrapper(BaseWrapper):
     def load(self, path: str):
         import torch
         self.model.load_state_dict(torch.load(path, map_location = self.device))
+        print("[LOG] Successfully loaded model weights.")
 
     def get_params(self):
         return {"state_dict":  self.model.state_dict}
     
     def set_params(self, **params):
         self.model.load_state_dict(params["state_dict"])
+
+    def get_last_conv_layer(self):
+        """Finds the last convolutional layer in a PyTorch model.\n
+        Returns the layer's name and object.
+        """
+        import torch
+        from torch import nn
+        last_conv = None
+        last_name = None
+
+        # Traverse all modules
+        for name, module in self.model.named_modules():
+            if isinstance(module, (nn.Conv2d, nn.Conv3d)):
+                last_conv = module
+                last_name = name
+
+        if last_conv is None:
+            raise ValueError("No Conv layer found in the PyTorch model.")
+
+        return last_conv, last_name
