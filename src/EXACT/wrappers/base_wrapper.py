@@ -5,8 +5,18 @@ class BaseWrapper(ABC):
     """Abstract base class for ML Model Wrappers"""
 
     @abstractmethod
+    def fit(self, X: Any, y: Any, **kwargs) -> None:
+        """Train the model on data"""
+        pass
+
+    @abstractmethod
     def predict(self, X: Any, **kwargs) -> Any:
         """Make predictions with the model"""
+        pass
+
+    @abstractmethod # Added new
+    def predict_proba(self,X:Any, **kwargs) -> Any:
+        """Get prediction probability"""
         pass
 
     @abstractmethod
