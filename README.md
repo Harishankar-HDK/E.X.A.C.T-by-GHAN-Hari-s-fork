@@ -74,70 +74,107 @@ cmp.plot(results, save_png = True)
 # System overview
 ## Architecture
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 
+    'primaryColor': '#1e3a5f',
+    'primaryTextColor': '#e0e0e0',
+    'primaryBorderColor': '#4a9eff',
+    'lineColor': '#4a9eff',
+    'secondaryColor': '#2d4a2d',
+    'tertiaryColor': '#3d3d3d',
+    'fontFamily': 'Segoe UI, Arial, sans-serif',
+    'nodeBorder': '#4a9eff',
+    'clusterBkg': '#1a1a2e',
+    'clusterBorder': '#4a9eff',
+    'titleColor': '#ffffff',
+    'edgeLabelBackground': '#16213e'
+}}}%%
+
 flowchart TB
-    subgraph Input["Input Layer"]
-        A[User Trained Model<br/>+ Input Data]
+    %% Input
+    A["User Model + Input Data"]:::inputClass
+    
+    %% Decision Block
+    B{"Preprocessing<br/>Required?"}:::decisionClass
+    
+    %% Preprocessing
+    C["Data Preprocessing<br/><small>Optional</small>"]:::processClass
+    
+    %% Explainers
+    subgraph EXPLAINERS["EXPLAINERS MODULE"]
+        direction TB
+        E_SEL["Select XAI Explainer"]:::selectClass
+        E_PARAMS["Parameters<br/><small>Unique + Common</small>"]:::subClass
+        E_RES["Explanation<br/>Results"]:::resultClass
     end
-
-    subgraph Preprocessing["Data Preprocessing"]
-        B[Data Preprocessing<br/>Optional - Per Explainer Needs]
+    
+    %% Comparator
+    subgraph COMPARATOR["COMPARATOR MODULE"]
+        direction TB
+        C_SEL["Compare Multiple<br/>Explainers"]:::selectClass
+        C_COMPAT["Compatibility<br/>Ensurer"]:::subClass
+        C_PARAMS["Parameters<br/><small>Unique + Common</small>"]:::subClass
+        C_METHODS["Comparison<br/>Methods"]:::subClass
+        C_RES["Comparison<br/>Results"]:::resultClass
     end
-
-    subgraph Explainers["Explainers Module"]
-        C1[Compatibility Ensurer]
-        C2[Unique Parameters<br/>Per XAI Method]
-        C3[Common Parameters<br/>Across Explainers]
-        C[Select XAI Explainer]
+    
+    %% Evaluators
+    subgraph EVALUATORS["EVALUATORS MODULE"]
+        direction TB
+        V_SEL["Select Compatible<br/>Evaluator"]:::selectClass
+        V_COMPAT["Compatibility<br/>Ensurer"]:::subClass
+        V_PARAMS["Parameters<br/><small>Unique + Common</small>"]:::subClass
+        V_RES["Evaluation<br/>Results"]:::resultClass
     end
-
-    subgraph Comparator["Comparator Module"]
-        D1[Compatibility Ensurer]
-        D2[Comparison Methods]
-        D3[Common Parameters]
-        D[Compare Multiple<br/>Explainer Results]
+    
+    %% Output
+    subgraph OUTPUT["OUTPUT LAYER"]
+        direction LR
+        OUT1["Visualize<br/>& Save"]:::outputClass
+        OUT2["Dashboard/Report<br/>Visualize & Save"]:::outputClass
+        OUT3["Report<br/>Visualize & Save"]:::outputClass
     end
-
-    subgraph Evaluators["Evaluators Module"]
-        E1[Compatibility Ensurer]
-        E2[Unique Parameters<br/>Per Evaluator]
-        E3[Common Parameters]
-        E[Select Compatible<br/>Evaluator]
-    end
-
-    subgraph Output["Output Layer"]
-        F1[Visualization &<br/>Save Results]
-        F2[Results Dashboard<br/>Visualization & Save]
-        F3[Evaluation Results<br/>Visualization & Save]
-    end
-
-    %% Main Flow
+    
+    %% Flows
     A --> B
-    B --> C
-
-    %% Workflow A: Single Explainer Path
-    C --> F1
-    C -.->|Workflow A:<br/>Single Explainer| F1
-
-    %% Workflow B: Multiple Explainers + Comparator Path
-    C --> D
-    D --> F2
-    C -.->|Workflow B:<br/>Multiple Explainers| D
-
-    %% Workflow C: Explainer + Evaluator Path
-    C --> E
-    E --> F3
-    C -.->|Workflow C:<br/>Explainer + Evaluator| E
-
+    B -->|Yes| C
+    B -->|No| E_SEL
+    C --> E_SEL
+    
+    %% Explainers Module Flow
+    E_SEL --> E_PARAMS
+    E_PARAMS --> E_RES
+    
+    %% Workflow A: Single Explainer
+    E_RES --> OUT1
+    
+    %% Workflow B: Multiple Explainers + Comparator
+    E_RES --> C_SEL
+    C_SEL --> C_COMPAT
+    C_COMPAT --> C_PARAMS
+    C_PARAMS --> C_METHODS
+    C_METHODS --> C_RES
+    C_RES --> OUT2
+    
+    %% Workflow C: Explainer + Evaluator
+    E_RES --> V_SEL
+    V_SEL --> V_COMPAT
+    V_COMPAT --> V_PARAMS
+    V_PARAMS --> V_RES
+    V_RES --> OUT3
+    
     %% Styling
-    classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
-    classDef process fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    classDef module fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    classDef output fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-
-    class A input
-    class B process
-    class C1,C2,C3,D1,D2,D3,E1,E2,E3 module
-    class F1,F2,F3 output
+    classDef inputClass fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#ffffff
+    classDef decisionClass fill:#5c3a1e,stroke:#f59e0b,stroke-width:2px,color:#ffffff
+    classDef processClass fill:#2d5016,stroke:#7ec850,stroke-width:2px,color:#ffffff
+    classDef selectClass fill:#2d4a5f,stroke:#60a5fa,stroke-width:2px,color:#ffffff
+    classDef subClass fill:#1a2f3a,stroke:#4a9eff,stroke-width:1px,color:#e0e0e0
+    classDef resultClass fill:#1a4a4a,stroke:#2dd4bf,stroke-width:2px,color:#ffffff
+    classDef outputClass fill:#4a1a4a,stroke:#c084fc,stroke-width:2px,color:#ffffff
+    
+    style EXPLAINERS fill:#0f172a,stroke:#4ade80,stroke-width:2px
+    style COMPARATOR fill:#0f172a,stroke:#fbbf24,stroke-width:2px
+    style EVALUATORS fill:#0f172a,stroke:#c084fc,stroke-width:2px
+    style OUTPUT fill:#0f172a,stroke:#c084fc,stroke-width:2px
 ```
 
 
