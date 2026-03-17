@@ -97,22 +97,21 @@ flowchart TB
     B{"Preprocessing<br/>Required?"}:::decisionClass
     
     %% Preprocessing
-    C["Data Preprocessing<br/><small>Optional</small>"]:::processClass
+    C["Data Preprocessing<br/>"]:::processClass
     
     %% Explainers
     subgraph EXPLAINERS["EXPLAINERS MODULE"]
         direction TB
         E_SEL["Select XAI Explainer"]:::selectClass
-        E_PARAMS["Parameters<br/><small>Unique + Common</small>"]:::subClass
+        E_PARAMS["Execute XAI method"]:::subClass
         E_RES["Explanation<br/>Results"]:::resultClass
     end
     
     %% Comparator
-    subgraph COMPARATOR["COMPARATOR MODULE"]
+    subgraph COMPARATOR["COMPARATORS MODULE"]
         direction TB
         C_SEL["Compare Multiple<br/>Explainers"]:::selectClass
         C_COMPAT["Compatibility<br/>Ensurer"]:::subClass
-        C_PARAMS["Parameters<br/><small>Unique + Common</small>"]:::subClass
         C_METHODS["Comparison<br/>Methods"]:::subClass
         C_RES["Comparison<br/>Results"]:::resultClass
     end
@@ -122,7 +121,6 @@ flowchart TB
         direction TB
         V_SEL["Select Compatible<br/>Evaluator"]:::selectClass
         V_COMPAT["Compatibility<br/>Ensurer"]:::subClass
-        V_PARAMS["Parameters<br/><small>Unique + Common</small>"]:::subClass
         V_RES["Evaluation<br/>Results"]:::resultClass
     end
     
@@ -150,16 +148,14 @@ flowchart TB
     %% Workflow B: Multiple Explainers + Comparator
     E_RES --> C_SEL
     C_SEL --> C_COMPAT
-    C_COMPAT --> C_PARAMS
-    C_PARAMS --> C_METHODS
+    C_COMPAT --> C_METHODS
     C_METHODS --> C_RES
     C_RES --> OUT2
     
     %% Workflow C: Explainer + Evaluator
     E_RES --> V_SEL
     V_SEL --> V_COMPAT
-    V_COMPAT --> V_PARAMS
-    V_PARAMS --> V_RES
+    V_COMPAT --> V_RES
     V_RES --> OUT3
     
     %% Styling
