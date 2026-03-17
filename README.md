@@ -71,5 +71,75 @@ cmp.report(results)
 cmp.plot(results, save_png = True)
 ```
 
+# System overview
+## Architecture
+```mermaid
+flowchart TB
+    subgraph Input["Input Layer"]
+        A[User Trained Model<br/>+ Input Data]
+    end
+
+    subgraph Preprocessing["Data Preprocessing"]
+        B[Data Preprocessing<br/>Optional - Per Explainer Needs]
+    end
+
+    subgraph Explainers["Explainers Module"]
+        C1[Compatibility Ensurer]
+        C2[Unique Parameters<br/>Per XAI Method]
+        C3[Common Parameters<br/>Across Explainers]
+        C[Select XAI Explainer]
+    end
+
+    subgraph Comparator["Comparator Module"]
+        D1[Compatibility Ensurer]
+        D2[Comparison Methods]
+        D3[Common Parameters]
+        D[Compare Multiple<br/>Explainer Results]
+    end
+
+    subgraph Evaluators["Evaluators Module"]
+        E1[Compatibility Ensurer]
+        E2[Unique Parameters<br/>Per Evaluator]
+        E3[Common Parameters]
+        E[Select Compatible<br/>Evaluator]
+    end
+
+    subgraph Output["Output Layer"]
+        F1[Visualization &<br/>Save Results]
+        F2[Results Dashboard<br/>Visualization & Save]
+        F3[Evaluation Results<br/>Visualization & Save]
+    end
+
+    %% Main Flow
+    A --> B
+    B --> C
+
+    %% Workflow A: Single Explainer Path
+    C --> F1
+    C -.->|Workflow A:<br/>Single Explainer| F1
+
+    %% Workflow B: Multiple Explainers + Comparator Path
+    C --> D
+    D --> F2
+    C -.->|Workflow B:<br/>Multiple Explainers| D
+
+    %% Workflow C: Explainer + Evaluator Path
+    C --> E
+    E --> F3
+    C -.->|Workflow C:<br/>Explainer + Evaluator| E
+
+    %% Styling
+    classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef process fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef module fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef output fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+
+    class A input
+    class B process
+    class C1,C2,C3,D1,D2,D3,E1,E2,E3 module
+    class F1,F2,F3 output
+```
+
+
 ## Contribution
 Accepting contributions
