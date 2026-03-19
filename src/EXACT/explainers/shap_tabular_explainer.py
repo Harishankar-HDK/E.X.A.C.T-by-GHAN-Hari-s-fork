@@ -503,6 +503,8 @@ class ShapExplainer_Tabular:
             Directory to save the plot. Created automatically if it does not exist.
             Default: 'user_saves'.
         """
+        import matplotlib.pyplot as plt
+
         if isinstance(data, torch.Tensor):
             data = data.detach().cpu().numpy()
         if data.ndim == 1:
@@ -518,21 +520,25 @@ class ShapExplainer_Tabular:
         else:
             values_to_plot = np.array(shap_values)                # (n_samples, num_features)
 
+        plt.close("all")                  # clear any leftover figure from previous plot
+        plt.figure(figsize=(10, 6))       # create a clean properly-sized figure first
+
         shap.summary_plot(
-        values_to_plot,
-        data,
-        feature_names=self.feature_names,
-        show=False,
+            values_to_plot,
+            data,
+            feature_names=self.feature_names,
+            show=False,
         )
+
+        plt.tight_layout()
+
         if save_png:
-            import matplotlib.pyplot as plt
             os.makedirs(save_dir, exist_ok=True)
             save_path = os.path.join(save_dir, "shap_summary_plot.png")
             plt.savefig(save_path, bbox_inches="tight", dpi=150)
             plt.show()
             print(f"[ShapExplainer_Tabular] Saved to: {save_path}")
         else:
-            import matplotlib.pyplot as plt
             plt.show()
 
     def bar_plot(self, explanation, class_index=0, save_png=False, save_dir="user_saves"):
@@ -549,6 +555,8 @@ class ShapExplainer_Tabular:
             Directory to save the plot. Created automatically if it does not exist.
             Default: 'user_saves'.
         """
+        import matplotlib.pyplot as plt
+
         shap_values = explanation["shap_values"]
 
         # Extract the correct class slice — consistent with summary_plot
@@ -559,9 +567,11 @@ class ShapExplainer_Tabular:
         else:
             values_to_plot = np.array(shap_values)                # (n_samples, num_features)
 
+        plt.close("all")                  # clear any leftover figure from previous plot
+        plt.figure(figsize=(10, 5))       # create a clean properly-sized figure first
+
         # Use summary_plot with plot_type="bar" — more robust than shap.plots.bar()
         # with a manually constructed Explanation object
-        
         shap.summary_plot(
             values_to_plot,
             feature_names=self.feature_names,
@@ -569,14 +579,14 @@ class ShapExplainer_Tabular:
             show=False,
         )
 
+        plt.tight_layout()
+
         if save_png:
-            import matplotlib.pyplot as plt
             os.makedirs(save_dir, exist_ok=True)
             plt.savefig(os.path.join(save_dir, "shap_bar_plot.png"), bbox_inches="tight", dpi=150)
             plt.show()
             print(f"[ShapExplainer_Tabular] Saved to: {os.path.join(save_dir, 'shap_bar_plot.png')}")
         else:
-            import matplotlib.pyplot as plt
             plt.show()
 
     def waterfall_plot(self, explanation, data, instance_index=0, class_index=0, save_png=False, save_dir="user_saves"):
@@ -596,6 +606,8 @@ class ShapExplainer_Tabular:
             Directory to save the plot. Created automatically if it does not exist.
             Default: 'user_saves'.
         """
+        import matplotlib.pyplot as plt
+
         if isinstance(data, torch.Tensor):
             data = data.detach().cpu().numpy()
         if data.ndim == 1:
@@ -615,18 +627,19 @@ class ShapExplainer_Tabular:
             feature_names = self.feature_names,
         )
 
-        shap.plots.waterfall(explanation_obj,show=False)
+        plt.close("all")                  # clear any leftover figure from previous plot
+
+        shap.plots.waterfall(explanation_obj, show=False)
+
+        plt.tight_layout()
 
         if save_png:
-            import matplotlib.pyplot as plt
             os.makedirs(save_dir, exist_ok=True)
             plt.savefig(os.path.join(save_dir, "shap_waterfall_plot.png"), bbox_inches="tight", dpi=150)
             plt.show()
             print(f"[ShapExplainer_Tabular] Saved to: {os.path.join(save_dir, 'shap_waterfall_plot.png')}")
         else:
-            import matplotlib.pyplot as plt
             plt.show()
-        
 
     def force_plot(self, explanation, data, instance_index=0, class_index=0, save_png=False, save_dir="user_saves"):
         """
@@ -645,6 +658,8 @@ class ShapExplainer_Tabular:
             Directory to save the plot. Created automatically if it does not exist.
             Default: 'user_saves'.
         """
+        import matplotlib.pyplot as plt
+
         if isinstance(data, torch.Tensor):
             data = data.detach().cpu().numpy()
         if data.ndim == 1:
@@ -656,7 +671,10 @@ class ShapExplainer_Tabular:
         expected_val = self._extract_expected_value(
             explanation["expected_value"], class_index
         )
-        
+
+        plt.close("all")                  # clear any leftover figure from previous plot
+        plt.figure(figsize=(14, 3))       # wide figure prevents label overlap
+
         shap.force_plot(
             expected_val,
             shap_val,
@@ -666,12 +684,12 @@ class ShapExplainer_Tabular:
             show=False,
         )
 
+        plt.tight_layout()
+
         if save_png:
-            import matplotlib.pyplot as plt
             os.makedirs(save_dir, exist_ok=True)
             plt.savefig(os.path.join(save_dir, "shap_force_plot.png"), bbox_inches="tight", dpi=150)
             plt.show()
             print(f"[ShapExplainer_Tabular] Saved to: {os.path.join(save_dir, 'shap_force_plot.png')}")
         else:
-            import matplotlib.pyplot as plt
             plt.show()

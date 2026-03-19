@@ -166,6 +166,7 @@ def test_shap_tabular():
     # 10. SHAP plots  (comment out if running headless)
     # --------------------------------------------------
     print("\n\n================ SHAP PLOTS ================")
+
     print("Generating waterfall plot for DeepExplainer...")
     shap_explainer.waterfall_plot(
         explanation    = explanation,
@@ -182,8 +183,8 @@ def test_shap_tabular():
         explanation = explanation_batch,
         data        = X_test,
         class_index = predicted,
-        save_png       = True,
-        save_dir       = "user_saves",
+        save_png    = True,
+        save_dir    = "user_saves",
     )
 
     print("Generating force plot  [DEEP]...")
@@ -197,15 +198,13 @@ def test_shap_tabular():
     )
 
     print("Generating bar plot  [DEEP]  on full X_test...")
-    shap.summary_plot(
-        explanation_batch["shap_values"],
-        X_test,
-        feature_names = feature_names,
-        plot_type     = "bar",
-        show          = True,
-        save_png       = True,
-        save_dir       = "user_saves",
+    shap_explainer.bar_plot(
+        explanation = explanation_batch,
+        class_index = predicted,
+        save_png    = True,
+        save_dir    = "user_saves",
     )
+
 
 if __name__ == "__main__":
     test_shap_tabular()
