@@ -32,25 +32,29 @@ class ShapExplainer_Text:
 
     Supported model interfaces:
         1. Simple tensor input:
-              model(input_ids)   → logits
+              model(input_ids)   -> logits
 
         2. HuggingFace-style dict input:
-              model(input_ids=..., attention_mask=...)  → output with .logits
+              model(input_ids=..., attention_mask=...)  -> output with .logits
 
         3. Fully custom via forward_fn:
-              forward_fn(input_ids_tensor) → logits_tensor
+              forward_fn(input_ids_tensor) -> logits_tensor
               (user supplies any custom wrapping logic)
 
     Notes:
         - Model is automatically set to eval() mode.
-        - tokenizer must be callable: text (str) → token_ids (list[int]).
-        - For HuggingFace tokenizers, pass the HF tokenizer object directly
-          as `hf_tokenizer`; the class handles `input_ids` extraction and
-          token decoding automatically.
+        - tokenizer accepts ALL formats:
+              HuggingFace tokenizer object  (recommended — pass directly)
+              callable returning a BatchEncoding / dict
+              callable returning a tensor   shape (1, seq_len) or (seq_len,)
+              callable returning a list     [101, 2054, ...]
+          The explainer extracts input_ids automatically from any of these.
+        - For HuggingFace tokenizers, pass the HF tokenizer object directly;
+          the class handles input_ids extraction and token decoding automatically.
         - max_seq_len controls truncation for long texts.
         - All tensor/numpy conversions are handled internally.
 
-     Limitations:                                         
+    Limitations:
         - Tested with: Embedding+Linear, LSTM, BERT-style transformers.
         - For BERT-style models, prefer mask_token_id=103 over 0 to avoid
           all-PAD background issues.
@@ -84,19 +88,26 @@ class ShapExplainer_Text:
             OR accept keyword arguments (HuggingFace style) and return an
             object with a .logits attribute.
 
-        tokenizer : callable
-            A function or object that converts a raw text string into a list
-            of integer token IDs.
+        tokenizer : callable or HuggingFace tokenizer object
+            Converts raw text to token IDs. Accepts ALL of the following:
 
-            Examples:
-                # Simple whitespace tokenizer with vocab
-                tokenizer = lambda text: [vocab[w] for w in text.split()]
+            1. HuggingFace tokenizer object passed directly:
+                  tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+                  # Just pass it — no wrapping needed.
 
-                # HuggingFace tokenizer (also pass as hf_tokenizer below)
-                tokenizer = lambda text: hf_tok(
-                    text, max_length=128, truncation=True,
-                    padding="max_length"
-                )["input_ids"]
+            2. Callable returning a BatchEncoding or dict:
+                  tokenizer = lambda text: hf_tok(text, return_tensors="pt")
+                  # BatchEncoding / {"input_ids": tensor([[101, ...]]), ...}
+
+            3. Callable returning a tensor:
+                  tokenizer = lambda text: hf_tok(text, return_tensors="pt")["input_ids"]
+                  # tensor([[101, 2054, ...]])
+
+            4. Callable returning a plain list:
+                  tokenizer = lambda text: [vocab[w] for w in text.split()]
+                  # [101, 2054, ...]
+
+            In all cases, input_ids are extracted automatically.
 
         class_names : list[str], optional
             Names of output classes (used in visualization only).
@@ -116,24 +127,23 @@ class ShapExplainer_Text:
 
         nsamples : int
             Number of masked samples KernelExplainer evaluates per explanation.
-            Higher → more accurate but slower.
-            Recommended: 200–1000. Default: 500.
+            Higher -> more accurate but slower.
+            Recommended: 200-1000. Default: 500.
 
         id2token : dict[int, str], optional
-            Reverse vocabulary mapping: token_id → token_string.
+            Reverse vocabulary mapping: token_id -> token_string.
             Used for token decoding when a full HuggingFace tokenizer is not
             available. Example: {0: "<PAD>", 1: "hello", 2: "world"}.
 
         hf_tokenizer : HuggingFace tokenizer object, optional
-            The actual HuggingFace tokenizer instance (NOT a lambda wrapper).
-            When provided:
-              - convert_ids_to_tokens() is used for decoding.
-              - attention_mask is automatically built and passed to the model.
-              - pad_token is auto-detected from tokenizer.pad_token.
-            Pass this alongside a `tokenizer` lambda that extracts input_ids.
+            Explicit HuggingFace tokenizer for attention_mask building and
+            token decoding. Only needed if `tokenizer` is a plain lambda
+            that does NOT have HuggingFace methods (convert_ids_to_tokens etc.).
+            If `tokenizer` is already an HuggingFace tokenizer object,
+            you do NOT need to pass this separately.
 
         forward_fn : callable, optional
-            Custom forward function: forward_fn(input_ids_tensor) → logits_tensor.
+            Custom forward function: forward_fn(input_ids_tensor) -> logits_tensor.
             Use this when your model requires special preprocessing, multiple
             inputs beyond attention_mask, or non-standard output formats.
             When provided, this takes precedence over both the simple tensor
@@ -159,14 +169,23 @@ class ShapExplainer_Text:
         self.max_seq_len   = max_seq_len
         self.nsamples      = nsamples
         self.id2token      = id2token
-        self.hf_tokenizer  = hf_tokenizer
         self.forward_fn    = forward_fn
+
+        # If tokenizer itself is an HF tokenizer object, use it as hf_tokenizer too
+        # unless the user explicitly passed a separate one
+        if hf_tokenizer is not None:
+            self.hf_tokenizer = hf_tokenizer
+        elif hasattr(tokenizer, "convert_ids_to_tokens"):
+            # tokenizer is already an HF tokenizer object — use it directly
+            self.hf_tokenizer = tokenizer
+        else:
+            self.hf_tokenizer = None
 
         # Resolve PAD token string for visualization filtering
         if pad_token is not None:
             self._pad_token_str = pad_token
-        elif hf_tokenizer is not None and hasattr(hf_tokenizer, "pad_token"):
-            self._pad_token_str = hf_tokenizer.pad_token  # e.g. "[PAD]" or "<pad>"
+        elif self.hf_tokenizer is not None and hasattr(self.hf_tokenizer, "pad_token"):
+            self._pad_token_str = self.hf_tokenizer.pad_token  # e.g. "[PAD]" or "<pad>"
         else:
             self._pad_token_str = None  # will fall back to _PAD_TOKEN_VARIANTS set
 
@@ -178,6 +197,63 @@ class ShapExplainer_Text:
 
         # Always eval mode — critical for correct, deterministic attributions
         self.model.eval()
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Internal: tokenizer output normalisation
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _extract_token_ids(self, raw):
+        """
+        Normalise any tokenizer output to a flat Python list of int token IDs.
+
+        Handles every format a user might pass:
+
+            BatchEncoding  {"input_ids": tensor([[101,...]]), ...}  HuggingFace default
+            dict           {"input_ids": [[101, ...]], ...}         HuggingFace, no tensors
+            tensor         shape (1, seq_len) or (seq_len,)         direct tensor output
+            list           [[101, ...]] or [101, ...]               nested or flat list
+
+        BatchEncoding is HuggingFace's return type from tokenizer.__call__().
+        It is NOT a plain dict subclass in all versions, so we check for the
+        presence of an 'input_ids' attribute rather than isinstance(raw, dict).
+
+        Parameters
+        ----------
+        raw : BatchEncoding | dict | torch.Tensor | list
+            Direct output of self.tokenizer(text).
+
+        Returns
+        -------
+        list[int]   flat list of integer token IDs, no batch dimension.
+        """
+        # ── Case 1: BatchEncoding or dict  (HuggingFace __call__ or wrapped lambda) ──
+        # hasattr(raw, "input_ids") catches BatchEncoding which may not be a plain dict
+        if isinstance(raw, dict) or hasattr(raw, "input_ids"):
+            ids = raw["input_ids"]
+            if isinstance(ids, torch.Tensor):
+                ids = ids.squeeze().tolist()          # (1, seq_len) -> [int, ...]
+            elif isinstance(ids, (list, tuple)):
+                ids = ids[0] if (ids and isinstance(ids[0], (list, tuple))) else ids
+            return [int(i) for i in ids]
+
+        # ── Case 2: torch.Tensor returned directly ──
+        if isinstance(raw, torch.Tensor):
+            return raw.squeeze().cpu().tolist()       # (1, N) or (N,) -> [int, ...]
+
+        # ── Case 3: list or tuple ──
+        if isinstance(raw, (list, tuple)):
+            # Unwrap one level of batch nesting if present
+            if raw and isinstance(raw[0], (list, tuple)):
+                raw = raw[0]
+            return [int(i) for i in raw]
+
+        raise TypeError(
+            f"[EXACT] ShapExplainer_Text: tokenizer returned an unrecognised type "
+            f"'{type(raw).__name__}'. Expected BatchEncoding, dict, torch.Tensor, or list.\n"
+            f"If your tokenizer is unusual, pass a lambda that returns a plain "
+            f"list of integer token IDs:\n"
+            f"    tokenizer=lambda text: my_tok(text)['input_ids'][0].tolist()"
+        )
 
     # ─────────────────────────────────────────────────────────────────────
     # Internal: forward pass  (handles all model interface variants)
@@ -200,11 +276,6 @@ class ShapExplainer_Text:
         Returns
         -------
         torch.Tensor   shape: (batch_size, num_classes) — raw logits.
-
-        Raises
-        ------
-        RuntimeError
-            If the model output format is not recognised.
         """
         # ── Path 1: User-supplied custom forward function ──
         if self.forward_fn is not None:
@@ -239,16 +310,11 @@ class ShapExplainer_Text:
 
         Parameters
         ----------
-        output : any
-            Raw model output.
+        output : any   Raw model output.
 
         Returns
         -------
         torch.Tensor   shape: (batch_size, num_classes)
-
-        Raises
-        ------
-        RuntimeError   if output format is not recognised.
         """
         if isinstance(output, torch.Tensor):
             return output
@@ -275,14 +341,12 @@ class ShapExplainer_Text:
 
         Kept self-contained inside the text explainer because text models
         receive LongTensor (token IDs), not FloatTensor like tabular or
-        image models. Using a shared predict_proba_fn would incorrectly
-        cast token IDs to float, breaking the embedding lookup.
+        image models.
 
         Parameters
         ----------
         input_tensor : torch.Tensor
             Shape: (batch_size, seq_len), dtype: torch.long.
-            Already on the correct device.
 
         Returns
         -------
@@ -290,18 +354,15 @@ class ShapExplainer_Text:
         """
         self.model.eval()
         with torch.no_grad():
-            logits = self._forward(input_tensor)          # (batch_size, num_classes)
+            logits = self._forward(input_tensor)
 
             if logits.ndim == 1:
-                # Single sample, single output neuron — squeeze to 2D
                 logits = logits.unsqueeze(0)
 
             if logits.ndim == 2 and logits.shape[-1] == 1:
-                # Binary classification: single output neuron → sigmoid
-                probs = torch.sigmoid(logits)             # (batch, 1)
+                probs = torch.sigmoid(logits)
             else:
-                # Multi-class or binary with 2 output neurons → softmax
-                probs = torch.softmax(logits, dim=1)      # (batch, num_classes)
+                probs = torch.softmax(logits, dim=1)
 
         return probs.cpu().numpy()
 
@@ -313,29 +374,22 @@ class ShapExplainer_Text:
         """
         Build the masked prediction function for a specific input.
 
-        KernelExplainer works by masking subsets of features (tokens here)
-        and observing how the model output changes. This function takes a
-        binary mask matrix from KernelExplainer and returns model probabilities.
-
-        How masking works for text:
-            - mask = 1 → token is PRESENT  (use original token_id)
-            - mask = 0 → token is ABSENT   (replace with mask_token_id)
+        mask = 1 -> token PRESENT  (use original token_id)
+        mask = 0 -> token ABSENT   (replace with mask_token_id)
 
         Parameters
         ----------
-        token_ids : np.ndarray   shape: (seq_len,) — original token IDs.
+        token_ids : np.ndarray   shape: (seq_len,)
 
         Returns
         -------
         predict_fn : callable
-            Accepts binary mask matrix of shape (n_coalitions, seq_len),
-            returns probability array of shape (n_coalitions, num_classes).
+            (n_coalitions, seq_len) -> (n_coalitions, num_classes)
         """
         def predict_fn(mask_matrix):
             n_coalitions = mask_matrix.shape[0]
             seq_len      = len(token_ids)
 
-            # Start with all mask tokens, then fill in present tokens
             masked_inputs = np.full(
                 (n_coalitions, seq_len),
                 fill_value=self.mask_token_id,
@@ -345,12 +399,11 @@ class ShapExplainer_Text:
                 present = mask_matrix[i].astype(bool)
                 masked_inputs[i, present] = token_ids[present]
 
-            # Must stay as LongTensor — embedding lookup requires integer IDs
             input_tensor = torch.tensor(
                 masked_inputs, dtype=torch.long
-            ).to(self.device)                              # (n_coalitions, seq_len)
+            ).to(self.device)
 
-            return self._predict_proba(input_tensor)       # (n_coalitions, num_classes)
+            return self._predict_proba(input_tensor)
 
         return predict_fn
 
@@ -362,13 +415,9 @@ class ShapExplainer_Text:
         """
         Explain a single text input — generate SHAP values per token.
 
-        Each SHAP value represents how much that token pushed the model's
-        output above or below the baseline prediction.
-
         Parameters
         ----------
-        text : str
-            Raw input text string to explain.
+        text : str   Raw input text string to explain.
 
         Returns
         -------
@@ -377,22 +426,15 @@ class ShapExplainer_Text:
                                For multi-class: list of (1, seq_len), one per class.
                                For binary (1 output neuron): (1, seq_len).
             'expected_value' : float or list[float]
-                               Baseline prediction (model output when all tokens masked).
             'tokens'         : list[str]
-                               Token strings for each SHAP value position (PAD included).
             'token_ids'      : np.ndarray  shape: (seq_len,)
-                               Integer token IDs for the input text.
             'text'           : str
-                               Original input text.
-
-        Raises
-        ------
-        ValueError
-            If the tokenizer returns an empty token list.
         """
         # ── Step 1: Tokenize ──
-        token_ids = self.tokenizer(text)
-        token_ids = np.array(token_ids, dtype=np.int64)[:self.max_seq_len]
+        # Accepts any return type: BatchEncoding, dict, tensor, list
+        raw       = self.tokenizer(text)
+        ids_list  = self._extract_token_ids(raw)           # always flat list[int]
+        token_ids = np.array(ids_list, dtype=np.int64)[:self.max_seq_len]
         seq_len   = len(token_ids)
 
         if seq_len == 0:
@@ -433,42 +475,29 @@ class ShapExplainer_Text:
         """
         Convert integer token IDs to human-readable token strings.
 
-        Priority order:
-            1. id2token dict (user-supplied reverse vocab)
-            2. hf_tokenizer.convert_ids_to_tokens()  (HuggingFace object)
-            3. tokenizer.convert_ids_to_tokens()     (tokenizer is an HF object)
-            4. tokenizer.decode() per token          (some custom tokenizers)
-            5. Fallback: string representation of ID
-
-        Parameters
-        ----------
-        token_ids : np.ndarray   shape: (seq_len,)
-
-        Returns
-        -------
-        list[str]   length: seq_len
+        Priority:
+            1. id2token dict
+            2. hf_tokenizer.convert_ids_to_tokens()
+            3. tokenizer.convert_ids_to_tokens()
+            4. tokenizer.decode() per token
+            5. Fallback: str(id)
         """
         ids = token_ids.tolist()
 
-        # 1. User-supplied reverse vocab dict
         if self.id2token is not None:
             return [self.id2token.get(int(tid), str(tid)) for tid in ids]
 
-        # 2. Dedicated HF tokenizer object (best path for HF models)
         if self.hf_tokenizer is not None and hasattr(
             self.hf_tokenizer, "convert_ids_to_tokens"
         ):
             return self.hf_tokenizer.convert_ids_to_tokens(ids)
 
-        # 3. tokenizer itself is an HF tokenizer object
         if hasattr(self.tokenizer, "convert_ids_to_tokens"):
             return self.tokenizer.convert_ids_to_tokens(ids)
 
-        # 4. tokenizer supports per-token decode
         if hasattr(self.tokenizer, "decode"):
             return [self.tokenizer.decode([tid]) for tid in ids]
 
-        # 5. Fallback
         return [str(tid) for tid in ids]
 
     # ─────────────────────────────────────────────────────────────────────
@@ -476,90 +505,49 @@ class ShapExplainer_Text:
     # ─────────────────────────────────────────────────────────────────────
 
     def _is_pad_token(self, token_str):
-        """
-        Return True if the given token string is a PAD token.
-
-        Checks against:
-            - The user-supplied or auto-detected pad_token string.
-            - The known set of common PAD token variants across tokenizer
-              families: "<pad>", "[PAD]", "<PAD>", "[pad]", "<|pad|>".
-
-        Parameters
-        ----------
-        token_str : str
-
-        Returns
-        -------
-        bool
-        """
         if self._pad_token_str is not None:
             return token_str == self._pad_token_str
         return token_str in self._PAD_TOKEN_VARIANTS
 
     # ─────────────────────────────────────────────────────────────────────
-    # Internal: SHAP value extraction  (shared by all output methods)
+    # Internal: SHAP value extraction
     # ─────────────────────────────────────────────────────────────────────
 
     def _extract_values(self, shap_values, class_index):
         """
-        Normalise the shap_values structure to a flat 1D numpy array
-        for a given class index.
+        Normalise shap_values to a flat 1D numpy array for a given class.
 
-        KernelExplainer returns different structures depending on the model:
-            - list of arrays (one per class): multi-class or binary-sigmoid
+        KernelExplainer returns:
+            - list of arrays (one per class): multi-class
             - 3D array (1, seq_len, n_classes): some SHAP versions
-            - 2D array (1, seq_len): binary or single-output
-
-        Parameters
-        ----------
-        shap_values : list[np.ndarray] or np.ndarray
-        class_index : int
-
-        Returns
-        -------
-        np.ndarray   shape: (seq_len,)
+            - 2D array (1, seq_len): binary / single-output
         """
         if isinstance(shap_values, list):
-            # list[array]: one array per class, each shape (1, seq_len)
             arr = np.array(shap_values[class_index])
         elif isinstance(shap_values, np.ndarray) and shap_values.ndim == 3:
-            # (1, seq_len, n_classes)
             arr = shap_values[0, :, class_index]
         else:
-            # (1, seq_len) — binary or single-output
             arr = np.array(shap_values)
 
         return arr.flatten()
 
     # ─────────────────────────────────────────────────────────────────────
-    # Raw explanation data  (mirrors LIME's get_explanation_data pattern)
+    # Raw explanation data
     # ─────────────────────────────────────────────────────────────────────
 
     def get_explanation_data(self, explanation, class_index=0, num_tokens=10):
         """
-        Extract a sorted (token, shap_value) list from explain() output,
-        with PAD tokens filtered out.
-
-        Mirrors the role of LimeExplainer_Tabular.get_explanation_data() and
-        ShapExplainer_Tabular.get_explanation_data() so all explainers can be
-        used interchangeably downstream.
+        Return sorted (token, shap_value) list with PAD tokens filtered out.
 
         Parameters
         ----------
-        explanation : dict
-            Direct output of explain().
-
-        class_index : int
-            Which class to extract SHAP values for. Default: 0.
-
-        num_tokens : int
-            How many top tokens to return. Default: 10.
+        explanation : dict   output of explain()
+        class_index : int    which class. Default: 0.
+        num_tokens  : int    how many top tokens. Default: 10.
 
         Returns
         -------
-        list of (str, float)
-            [(token_string, shap_value), ...] sorted by |shap_value| descending,
-            PAD tokens excluded.
+        list of (str, float)   sorted by |shap_value| descending.
         """
         values = self._extract_values(explanation["shap_values"], class_index)
         tokens = explanation["tokens"]
@@ -581,20 +569,15 @@ class ShapExplainer_Text:
         """
         Print SHAP token attributions in readable console format.
 
-        Mirrors the print style of LimeExplainer_Tabular.visualize() and
-        ShapExplainer_Tabular.visualize().
-        Positive values shown with '+', negative with '-'.
-
         Parameters
         ----------
-        explanation : dict   — direct output of explain()
-        class_index : int    — which class to display. Default: 0.
-        num_tokens  : int    — how many top tokens to show. Default: 10.
+        explanation : dict   output of explain()
+        class_index : int    which class. Default: 0.
+        num_tokens  : int    how many top tokens. Default: 10.
 
         Returns
         -------
-        token_scores : list of (str, float)
-            Same as get_explanation_data() — returned for programmatic use.
+        list of (str, float)
         """
         token_scores = self.get_explanation_data(
             explanation,
@@ -626,13 +609,10 @@ class ShapExplainer_Text:
         """
         Print an inline ASCII text plot showing per-token SHAP attributions.
 
-        Tokens are displayed with +/- markers proportional to their SHAP
-        magnitude. PAD tokens are filtered out.
-
         Parameters
         ----------
-        explanation : dict   — direct output of explain()
-        class_index : int    — which class to visualize. Default: 0.
+        explanation : dict   output of explain()
+        class_index : int    which class. Default: 0.
         """
         values = self._extract_values(explanation["shap_values"], class_index)
         tokens = explanation["tokens"]
@@ -643,7 +623,6 @@ class ShapExplainer_Text:
             else f"Class_{class_index}"
         )
 
-        # Filter PAD tokens
         pairs = [
             (tok, float(val))
             for tok, val in zip(tokens, values.tolist())
@@ -689,17 +668,16 @@ class ShapExplainer_Text:
     def summary_plot(self, explanation, class_index=0):
         """
         SHAP summary plot — shows SHAP value distribution per token.
-        PAD tokens are filtered before plotting.
+        PAD tokens filtered before plotting.
 
         Parameters
         ----------
-        explanation : dict   — output of explain()
-        class_index : int    — which class to visualize. Default: 0.
+        explanation : dict   output of explain()
+        class_index : int    which class. Default: 0.
         """
         values = self._extract_values(explanation["shap_values"], class_index)
         tokens = explanation["tokens"]
 
-        # Filter PAD tokens
         filtered = [
             (tok, val)
             for tok, val in zip(tokens, values.tolist())
@@ -710,12 +688,9 @@ class ShapExplainer_Text:
             return
 
         filtered_tokens, filtered_vals = zip(*filtered)
-        values_2d = np.array(filtered_vals).reshape(1, -1)  # (1, n_tokens)
+        values_2d = np.array(filtered_vals).reshape(1, -1)
 
-        shap.summary_plot(
-            values_2d,
-            feature_names=list(filtered_tokens),
-        )
+        shap.summary_plot(values_2d, feature_names=list(filtered_tokens))
 
     # ─────────────────────────────────────────────────────────────────────
     # SHAP bar plot
@@ -724,17 +699,16 @@ class ShapExplainer_Text:
     def bar_plot(self, explanation, class_index=0):
         """
         SHAP bar plot — shows mean absolute SHAP value per token.
-        PAD tokens are filtered before plotting.
+        PAD tokens filtered before plotting.
 
         Parameters
         ----------
-        explanation : dict   — output of explain()
-        class_index : int    — which class to visualize. Default: 0.
+        explanation : dict   output of explain()
+        class_index : int    which class. Default: 0.
         """
         values = self._extract_values(explanation["shap_values"], class_index)
         tokens = explanation["tokens"]
 
-        # Filter PAD tokens — use consistent normalisation with summary_plot
         filtered = [
             (tok, val)
             for tok, val in zip(tokens, values.tolist())
@@ -745,11 +719,6 @@ class ShapExplainer_Text:
             return
 
         filtered_tokens, filtered_vals = zip(*filtered)
-        values_2d = np.array(filtered_vals).reshape(1, -1)  # (1, n_tokens)
+        values_2d = np.array(filtered_vals).reshape(1, -1)
 
-        shap.summary_plot(
-            values_2d,
-            feature_names=list(filtered_tokens),
-            plot_type="bar",
-        )
-
+        shap.summary_plot(values_2d, feature_names=list(filtered_tokens), plot_type="bar")

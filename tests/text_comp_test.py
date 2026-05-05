@@ -13,7 +13,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from EXACT.explainers.lime_text_explainer  import LimeExplainer_Text
 from EXACT.explainers.loo_text_explainer   import LOOTextExplainer
 from EXACT.comparators.text_comp           import TextComparator
-# from EXACT.explainers.shap_text_explainer  import ShapExplainer_Text
+from EXACT.explainers.shap_text_explainer  import ShapExplainer_Text
 
 
 def test():
@@ -55,12 +55,12 @@ def test():
         class_names = ["negative", "positive"],
     )
 
-    # shap_explainer = ShapExplainer_Text(
-    #     model = model,
-    #     tokenizer = tokenizer,
-    #     class_names = ["negative", "positive"],
-    #     mask_token_id = tokenizer.mask_token_id,
-    # )
+    shap_explainer = ShapExplainer_Text(
+        model = model,
+        tokenizer = tokenizer,
+        class_names = ["negative", "positive"],
+        mask_token_id = tokenizer.mask_token_id,
+    )
 
     cmp = TextComparator(
         class_names = ["negative", "positive"],
@@ -87,14 +87,14 @@ def test():
         # Step 1 — run each explainer
         lime_result = lime_explainer.explain(text)
         loo_result  = loo_explainer.explain(text)
-        # shap_result = shap_explainer.explain(text)
+        shap_result = shap_explainer.explain(text)
 
         # Step 2 — compare
         results = cmp.compare(
             explanations = {
                 "LIME" : lime_result,
                 "LOO"  : loo_result,
-                # "SHAP" : shap_result,
+                "SHAP" : shap_result,
             },
             text = text,
         )

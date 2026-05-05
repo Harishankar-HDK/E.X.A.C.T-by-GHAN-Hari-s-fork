@@ -4,27 +4,27 @@ EXACT — EXplainability and Attribution for Classification Tasks
 comparators/text_comp.py
 
 Compares word-level importance scores from any number of text explainers.
-Works with LIME, LOO, and any future explainer out of the box.
+Works with LIME, LOO, SHAP, and any future explainer out of the box.
 
 What it produces
 ----------------
 Two separate results the user can call independently:
 
     plot_words(results, save_png=True)
-        → One bar chart per explainer, all aligned on the same word axis,
+        -> One bar chart per explainer, all aligned on the same word axis,
           placed side by side in a single PNG.
           Shows which words each explainer considers important.
 
     plot_scores(results, save_png=True)
-        → A score comparison chart showing quality metrics per explainer:
+        -> A score comparison chart showing quality metrics per explainer:
           Coverage, Concentration, Polarity Balance, Agreement, and a
           Composite score with a ranked winner.
 
     report(results)
-        → Prints both of the above as formatted text to the terminal.
+        -> Prints both of the above as formatted text to the terminal.
 
     plot(results, save_png=True)
-        → Saves both panels together in one PNG.
+        -> Saves both panels together in one PNG.
 
 Usage
 -----
@@ -35,10 +35,15 @@ Usage
     # Step 1 — run your explainers
     lime_result = lime_explainer.explain(text)
     loo_result  = loo_explainer.explain(text)
+    shap_result = shap_explainer.explain(text)
 
     # Step 2 — compare
     results = cmp.compare(
-        explanations = {"LIME": lime_result, "LOO": loo_result},
+        explanations = {
+            "LIME": lime_result,
+            "LOO" : loo_result,
+            "SHAP": shap_result,
+        },
         text = text,
     )
 
@@ -50,12 +55,13 @@ Usage
 
 Adding any future explainer
 ----------------------------
-    shap_scores = {"horrible": 0.71, "good": -0.30}
+    custom_scores = {"horrible": 0.71, "good": -0.30}
     results = cmp.compare(
         explanations = {
-            "LIME" : lime_result,
-            "LOO"  : loo_result,
-            "SHAP" : shap_scores,   # plain dict — just works
+            "LIME"   : lime_result,
+            "LOO"    : loo_result,
+            "SHAP"   : shap_result,
+            "CUSTOM" : custom_scores,   # plain dict — just works
         },
         text = text,
     )
@@ -88,23 +94,53 @@ def _saves():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _extract(name, exp):
-    '''
+    """
     Convert any explanation object to {word: score}.
 
     Auto-detects:
-      LIME  →  lime.explanation.Explanation  (has .as_list + .top_labels)
-      LOO   →  LOOTextExplanation            (has .tokens  + .importances)
-      dict  →  {word: score}                 passed through directly
+      SHAP  ->  dict with 'shap_values' and 'tokens' keys
+                (output of ShapExplainer_Text.explain())
+      LIME  ->  lime.explanation.Explanation  (has .as_list + .top_labels)
+      LOO   ->  LOOTextExplanation            (has .tokens  + .importances)
+      dict  ->  {word: score}                 passed through directly
 
     For any other type, raises a clear error with instructions.
-    '''
+    """
+    # ── SHAP result dict ──
+    # ShapExplainer_Text.explain() returns a dict with 'shap_values' and 'tokens'.
+    # Must be checked BEFORE the generic dict branch below.
+    if isinstance(exp, dict) and "shap_values" in exp and "tokens" in exp:
+        shap_values = exp["shap_values"]
+        tokens      = exp["tokens"]
+
+        # shap_values can be:
+        #   list[np.ndarray]  — one array per class (multi-class or binary softmax)
+        #   np.ndarray 2D     — (1, seq_len) binary single-output
+        # We take the LAST class (positive / highest index) to be consistent
+        # with how LIME and LOO report importance for the predicted class.
+        if isinstance(shap_values, list):
+            vals = np.array(shap_values[-1]).flatten()
+        else:
+            vals = np.array(shap_values).flatten()
+
+        out = {}
+        for tok, val in zip(tokens, vals.tolist()):
+            k = str(tok).lower()
+            # keep highest magnitude if sub-word token appears multiple times
+            if k not in out or abs(float(val)) > abs(out[k]):
+                out[k] = float(val)
+        return out
+
+    # ── Plain {word: score} dict passed directly by user ──
     if isinstance(exp, dict):
         return {str(k).lower(): float(v) for k, v in exp.items()}
 
+    # ── LIME explanation object ──
     if hasattr(exp, "as_list") and hasattr(exp, "top_labels"):
         label = exp.top_labels[0]
         return {w.lower(): float(s) for w, s in exp.as_list(label=label)}
 
+    # ── LOO explanation object ──
     if hasattr(exp, "tokens") and hasattr(exp, "importances"):
         out = {}
         for tok, imp in zip(exp.tokens, exp.importances):
@@ -156,25 +192,25 @@ def _sentence_words(explanations):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _coverage(scores, sentence_words):
-    '''
+    """
     What fraction of the sentence words did this explainer score?
 
     LIME only scores its top-N features, so coverage is often < 1.0.
     LOO scores every word, so coverage is always 1.0.
     Higher is better — a fuller explanation.
-    '''
+    """
     if not sentence_words:
         return 0.0
     return round(sum(1 for w in sentence_words if w in scores) / len(sentence_words), 4)
 
 
 def _concentration(scores):
-    '''
+    """
     What fraction of the total importance is held by the top 3 words?
 
     Higher = explanation is focused on a few key words (easier to read).
     Lower  = importance is spread evenly across many words.
-    '''
+    """
     if not scores:
         return 0.0
     vals  = sorted(abs(v) for v in scores.values())[::-1]
@@ -183,12 +219,12 @@ def _concentration(scores):
 
 
 def _polarity(scores):
-    '''
+    """
     How balanced are the positive and negative scores?
 
     1.0 = equal positive and negative mass (captures both sides of sentiment).
     0.0 = all one-sided (only positive or only negative words scored).
-    '''
+    """
     if not scores:
         return 0.0
     pos = sum(v for v in scores.values() if v > 0)
@@ -198,12 +234,12 @@ def _polarity(scores):
 
 
 def _agreement(scores_a, scores_b):
-    '''
+    """
     On shared words, what fraction do both explainers assign the same sign?
 
     1.0 = perfect agreement. 0.0 = perfect disagreement.
     Only computed on words that appear in both explanations.
-    '''
+    """
     shared = set(scores_a) & set(scores_b)
     if not shared:
         return 0.0
@@ -228,10 +264,10 @@ def _weights(metrics):
 
 class TextComparator:
 
-    '''
+    """
     Compares word-level importance from any number of text explainers.
 
-    Works with LIME and LOO automatically.
+    Works with LIME, LOO, and SHAP automatically.
     Works with any future explainer when passed as a {word: score} dict.
 
     Parameters
@@ -240,7 +276,7 @@ class TextComparator:
         Human-readable class labels.
     top_n : int
         Number of words to show. Default 10.
-    '''
+    """
 
     def __init__(self, class_names=None, top_n=10):
         self.class_names = class_names
@@ -252,20 +288,20 @@ class TextComparator:
     # ─────────────────────────────────────────────────────────────────
 
     def compare(self, explanations, text=None):
-        '''
+        """
         Extract scores and compute quality metrics for every explainer.
 
         Parameters
         -----------
         explanations : dict
-            { "LIME": lime_exp, "LOO": loo_exp, "SHAP": {word: score}, ... }
+            { "LIME": lime_exp, "LOO": loo_exp, "SHAP": shap_exp, ... }
         text : str, optional
             Original input text. Auto-read from LOO if not given.
 
         Returns
         --------
         results dict — pass to report(), plot_words(), plot_scores(), plot().
-        '''
+        """
         if not explanations:
             raise ValueError("explanations dict is empty.")
 
@@ -280,6 +316,10 @@ class TextComparator:
             for exp in explanations.values():
                 if hasattr(exp, "original_text"):
                     input_text = exp.original_text
+                    break
+                # also try SHAP result dict
+                if isinstance(exp, dict) and "text" in exp:
+                    input_text = exp["text"]
                     break
         input_text  = input_text or ""
         sent_words  = input_text.lower().split()
@@ -357,13 +397,13 @@ class TextComparator:
     # ─────────────────────────────────────────────────────────────────
 
     def report(self, results):
-        '''
+        """
         Print word importances and score comparison to the terminal.
 
         Parameters
         -----------
         results : dict   output of compare()
-        '''
+        """
         names   = results["names"]
         display = results["display"]
         raw     = results["raw"]
@@ -384,7 +424,7 @@ class TextComparator:
             info = results["label_info"][n]
             cls  = info["class"]
             conf = f"  (conf {info['conf']:.4f})" if info["conf"] else ""
-            print(f"  {n:<8} →  Predicted: {cls}{conf}")
+            print(f"  {n:<8} ->  Predicted: {cls}{conf}")
         print("=" * 72)
 
         # ── PART 1: word importances ──────────────────────────────────
@@ -397,7 +437,7 @@ class TextComparator:
         # header row
         hdr = f"  {'Word':<{w_col}}"
         for n in names:
-            hdr += f"  {'◀─ ' + n + ' ─▶':^{bar_w + 9}}"
+            hdr += f"  {'<- ' + n + ' ->':^{bar_w + 9}}"
         print(hdr)
 
         sub = f"  {'':<{w_col}}"
@@ -415,7 +455,7 @@ class TextComparator:
 
                 if rv is not None:
                     fill = int(bar_w * abs(nv))
-                    sign = "▶" if rv >= 0 else "◀"
+                    sign = ">" if rv >= 0 else "<"
                     bar  = (sign * fill).ljust(bar_w)
                     scr  = f"{rv:>+9.4f}"
                     rkk  = f"#{rk:>3}"
@@ -453,7 +493,7 @@ class TextComparator:
                 if np.isnan(v):
                     row += f"{'N/A':>{col_w}}"
                 else:
-                    star = " ★" if best is not None and abs(v - best) < 1e-9 else "  "
+                    star = " *" if best is not None and abs(v - best) < 1e-9 else "  "
                     row += f"{f'{v:.4f}{star}':>{col_w}}"
             print(row)
 
@@ -467,7 +507,7 @@ class TextComparator:
         print("\n  RANKED  (higher composite = better explanation quality)")
         medals = ["[1]", "[2]", "[3]"] + ["   "] * 20
         for i, (n, s) in enumerate(ranked):
-            bar = "█" * int(s * 28) + "░" * (28 - int(s * 28))
+            bar = "#" * int(s * 28) + "." * (28 - int(s * 28))
             print(f"  {medals[i]}  {n:<18}  {s:.4f}  {bar}")
 
         print(f"\n  Winner   : {winner}")
@@ -485,7 +525,7 @@ class TextComparator:
     # ─────────────────────────────────────────────────────────────────
 
     def plot_words(self, results, save_png=False, filename=None):
-        '''
+        """
         Save a PNG with one bar chart per explainer, all aligned on the
         same word axis and placed side by side.
 
@@ -498,7 +538,7 @@ class TextComparator:
         results  : dict   output of compare()
         save_png : bool   save to user_saves/ if True
         filename : str    custom filename stem. Auto-generated if None.
-        '''
+        """
         plt = self._get_plt()
         if plt is None:
             return
@@ -595,7 +635,7 @@ class TextComparator:
             info  = results["label_info"][name]
             cls   = info["class"]
             conf  = f"\nconf {info['conf']:.4f}" if info["conf"] else ""
-            flag  = "  ★ BEST" if name == winner else ""
+            flag  = "  * BEST" if name == winner else ""
             ax.set_title(
                 f"{name}{flag}\nPredicted: {cls}{conf}",
                 color=exp_cols[name], fontsize=10,
@@ -609,7 +649,7 @@ class TextComparator:
         for i, n in enumerate(names):
             handles.append(mp.Patch(color=PALETTE[i % len(PALETTE)],
                                     label=f"{n} (supports +)"))
-        handles.append(mp.Patch(color=NEG_COL, label="Opposes prediction (−)"))
+        handles.append(mp.Patch(color=NEG_COL, label="Opposes prediction (-)"))
         handles.append(mp.Patch(color=GREY,    label="Not scored by explainer"))
         fig.legend(handles=handles, loc="lower center",
                    ncol=min(len(handles), 4),
@@ -628,23 +668,16 @@ class TextComparator:
     # ─────────────────────────────────────────────────────────────────
 
     def plot_scores(self, results, save_png=False, filename=None):
-        '''
+        """
         Save a PNG showing quality metric scores for each explainer —
         a score table and a ranked composite bar chart.
-
-        Metrics shown:
-          Coverage      — fraction of sentence words scored
-          Concentration — top-3 words share of total importance
-          Polarity      — balance of positive vs negative evidence
-          Agreement     — directional agreement with other explainers
-          Composite     — weighted average of all metrics above
 
         Parameters
         -----------
         results  : dict   output of compare()
         save_png : bool   save to user_saves/ if True
         filename : str    custom filename stem. Auto-generated if None.
-        '''
+        """
         plt = self._get_plt()
         if plt is None:
             return
@@ -785,19 +818,16 @@ class TextComparator:
     # ─────────────────────────────────────────────────────────────────
 
     def plot(self, results, save_png=False, filename=None):
-        '''
+        """
         Save both the word importance bar plots and the score comparison
         chart together in a single PNG.
-
-        Equivalent to calling plot_words() and plot_scores() separately
-        but produces one combined file.
 
         Parameters
         -----------
         results  : dict   output of compare()
         save_png : bool   save to user_saves/ if True
         filename : str    custom filename stem. Auto-generated if None.
-        '''
+        """
         stamp  = datetime.now().strftime("%Y%m%d_%H%M%S")
         names  = "_".join(results["names"])
         stem   = filename or f"comparison_{names}_{stamp}"
@@ -826,7 +856,7 @@ class TextComparator:
             fig.savefig(out, dpi=150, bbox_inches="tight",
                         facecolor=fig.get_facecolor())
             plt.close(fig)
-            print(f"[EXACT] {label} saved → {out}")
+            print(f"[EXACT] {label} saved -> {out}")
         else:
             plt.show()
             plt.close(fig)
