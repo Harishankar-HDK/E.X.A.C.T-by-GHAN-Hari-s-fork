@@ -57,6 +57,7 @@ class TumorModel(nn.Module):
 weights_path = os.path.join(os.path.dirname(__file__), "..", "models", "model_1.pth")
 model = TumorModel()
 model.load_state_dict(torch.load(weights_path, map_location=device))
+model = model.to(device)
 model.eval()
 print("model_1.pth loaded")
 

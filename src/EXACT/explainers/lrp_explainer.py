@@ -547,8 +547,8 @@ class LRPImageExplainer:
         device: Optional[torch.device] = None,
         save_dir: str = "user_saves/lrp_saves",
     ):
-        self.model    = model.eval()
         self.device   = device or next(model.parameters()).device
+        self.model    = model.to(self.device).eval()
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
