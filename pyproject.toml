@@ -3,16 +3,16 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "EXACT"                  # Your package name on PyPI
+name = "exact-ai"                  # Your package name on PyPI
 version = "0.1.0"                  # Semantic version
-description = "Comprehensive Library for explainable AI (XAI) methods like GradCAM, LIME, SHAP."
+description = "Comprehensive Library for explainable AI (XAI) methods."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
   { name = "Glenn Mathews", email = "glennmathews18@gmail.com" },
   { name = "Harishankar S M, email = "harishankarsm2004@gmail.com" },
   { name = "Afzina Sadiq, email = "afzinasadiq180@gmail.com" },
-  { name = "Nandana Murali, email = "" }
+  { name = "Nandana Murali, email = "nandanalmurali2003@gmail.com" }
 ]
 keywords = ["xai", "explainability", "gradcam", "lime", "shap", "ml", "ai"]
 classifiers = [
@@ -36,9 +36,9 @@ dependencies = [
 ]  
 
 [project.urls]
-#Homepage = "https://github.com/yourusername/mlmodels"
+Homepage = "https://github.com/GurenMashu/E.X.A.C.T-by-GHAN"
 #Documentation = "https://github.com/yourusername/mlmodels/wiki"
-#Source = "https://github.com/yourusername/mlmodels"
+Source = "https://github.com/GurenMashu/E.X.A.C.T-by-GHAN"
 #Tracker = "https://github.com/yourusername/mlmodels/issues"
 
 [tool.setuptools]
