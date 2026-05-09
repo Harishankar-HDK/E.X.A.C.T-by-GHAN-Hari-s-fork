@@ -9,7 +9,10 @@ description = "Comprehensive Library for explainable AI (XAI) methods like GradC
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-  { name = "Glenn Mathews", email = "glennmathews18@gmail.com" }
+  { name = "Glenn Mathews", email = "glennmathews18@gmail.com" },
+  { name = "Harishankar S M, email = "harishankarsm2004@gmail.com" },
+  { name = "Afzina Sadiq, email = "afzinasadiq180@gmail.com" },
+  { name = "Nandana Murali, email = "" }
 ]
 keywords = ["xai", "explainability", "gradcam", "lime", "shap", "ml", "ai"]
 classifiers = [
@@ -28,6 +31,8 @@ dependencies = [
     "matplotlib",
     "pillow",
     "grad-cam",
+    "lime",
+    "shap"
 ]  
 
 [project.urls]

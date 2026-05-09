@@ -42,7 +42,7 @@ transform = transforms.Compose([
 # Load Image
 # -------------------------------------------------
 
-img_path = "sample_dog.jpg"   # change if needed
+img_path = "models/catexample.jpg"   # change if needed
 image = Image.open(img_path).convert("RGB")
 
 image_np = np.array(image)
@@ -91,7 +91,8 @@ print("\nGenerating LIME explanation (heatmap + boundary)...")
 explanation = explainer.explain(
     image=image_np,
     top_labels=1,
-    boundary_marking=True   # <-- enables boundary visualization
+    boundary_marking=True,
+       save_png=True   # <-- enables boundary visualization
 )
 
 
@@ -101,6 +102,6 @@ explanation = explainer.explain(
 
 print("\nExplanation generated successfully.")
 
-print("Top predicted label index:", explanation.top_labels[0])
+print("Top predicted label index:", explanation["explanation"].top_labels[0])
 
 print("Outputs saved inside folder: user_saves/")
